@@ -1,0 +1,12 @@
+specVersion: "v1beta"
+serviceId: "react-admin-dashboard-master"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "fdcdb"
+      cloudSql:
+        instanceId: "react-admin-dashboard-master-fdc"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]
