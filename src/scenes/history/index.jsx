@@ -1,3 +1,4 @@
+// src/scenes/history/index.jsx
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -16,11 +17,13 @@ import {
 } from "@mui/material";
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
+import { useLanguage } from "../../contexts/LanguageContext"; // Import hook bahasa
 
 const History = () => {
   const [hourlyAverages, setHourlyAverages] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [selectedDay, setSelectedDay] = useState("all");
+  const { translate } = useLanguage(); // Gunakan terjemahan
 
   // Membaca data history dari Firebase
   useEffect(() => {
@@ -63,23 +66,24 @@ const History = () => {
         const averages = Object.keys(groupedByHour).map((hourKey) => {
           const group = groupedByHour[hourKey];
           return {
-            time: group.time,
+            time: hourKey,
             suhu: group.suhu.reduce((sum, val) => sum + val, 0) / group.suhu.length || 0,
             ph: group.ph.reduce((sum, val) => sum + val, 0) / group.ph.length || 0,
-            tinggi_air: group.tinggi_air.reduce((sum, val) => sum + val, 0) / group.tinggi_air.length || 0,
+            tinggi_air:
+              group.tinggi_air.reduce((sum, val) => sum + val, 0) / group.tinggi_air.length || 0,
           };
         });
 
         // Simpan hasil rata-rata ke state
         setHourlyAverages(averages.reverse()); // Urutkan dari yang terbaru
-        setFilteredData(averages.reverse()); // Default: tampilkan semua data
+        setFilteredData(averages.reverse());
       } else {
         setHourlyAverages([]);
         setFilteredData([]);
       }
     });
 
-    return () => unsubscribe(); // Cleanup listener saat komponen unmount
+    return () => unsubscribe(); // Cleanup saat komponen unmount
   }, []);
 
   // Fungsi untuk menyortir data berdasarkan hari
@@ -94,31 +98,33 @@ const History = () => {
         const dayOfWeek = new Date(item.time).getDay(); // Mendapatkan hari dalam seminggu (0-6)
         return dayOfWeek.toString() === selected; // Filter berdasarkan hari yang dipilih
       });
-      setFilteredData(filtered); // Filter berdasarkan hari
+      setFilteredData(filtered);
     }
   };
 
   return (
     <Box m="20px">
       {/* HEADER */}
-      <Typography variant="h4">Riwayat History</Typography>
-      <Typography variant="subtitle1">
-        Data Sensor Suhu, pH, dan Ketinggian Air (Rata-Rata Per Jam)
-      </Typography>
+      <Typography variant="h4">{translate("history_title")}</Typography>
+      <Typography variant="subtitle1">{translate("history_subtitle")}</Typography>
 
       {/* FILTER */}
       <Box mt={2}>
         <FormControl fullWidth>
-          <InputLabel>Filter Hari</InputLabel>
-          <Select value={selectedDay} label="Filter Hari" onChange={handleDayFilter}>
-            <MenuItem value="all">Semua Hari</MenuItem>
-            <MenuItem value="1">Senin</MenuItem>
-            <MenuItem value="2">Selasa</MenuItem>
-            <MenuItem value="3">Rabu</MenuItem>
-            <MenuItem value="4">Kamis</MenuItem>
-            <MenuItem value="5">Jumat</MenuItem>
-            <MenuItem value="6">Sabtu</MenuItem>
-            <MenuItem value="0">Minggu</MenuItem>
+          <InputLabel>{translate("filter_label")}</InputLabel>
+          <Select
+            value={selectedDay}
+            label={translate("filter_label")}
+            onChange={handleDayFilter}
+          >
+            <MenuItem value="all">{translate("filter_all_days")}</MenuItem>
+            <MenuItem value="1">{translate("filter_monday")}</MenuItem>
+            <MenuItem value="2">{translate("filter_tuesday")}</MenuItem>
+            <MenuItem value="3">{translate("filter_wednesday")}</MenuItem>
+            <MenuItem value="4">{translate("filter_thursday")}</MenuItem>
+            <MenuItem value="5">{translate("filter_friday")}</MenuItem>
+            <MenuItem value="6">{translate("filter_saturday")}</MenuItem>
+            <MenuItem value="0">{translate("filter_sunday")}</MenuItem>
           </Select>
         </FormControl>
       </Box>
@@ -128,10 +134,18 @@ const History = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell align="center">Waktu (Per Jam)</TableCell>
-              <TableCell align="center">Suhu (°C)</TableCell>
-              <TableCell align="center">pH</TableCell>
-              <TableCell align="center">Ketinggian Air (cm)</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 'bold' }}>
+                {translate("table_time")}
+              </TableCell>
+              <TableCell align="center" sx={{ fontWeight: 'bold' }}>
+                {translate("table_temperature")}
+              </TableCell>
+              <TableCell align="center" sx={{ fontWeight: 'bold' }}>
+                {translate("table_ph")}
+              </TableCell>
+              <TableCell align="center" sx={{ fontWeight: 'bold' }}>
+                {translate("table_water_level")}
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -139,15 +153,15 @@ const History = () => {
               filteredData.map((row, index) => (
                 <TableRow key={index}>
                   <TableCell align="center">{row.time}</TableCell>
-                  <TableCell align="center">{row.suhu.toFixed(2) || "N/A"}</TableCell>
-                  <TableCell align="center">{row.ph.toFixed(2) || "N/A"}</TableCell>
-                  <TableCell align="center">{row.tinggi_air.toFixed(2) || "N/A"}</TableCell>
+                  <TableCell align="center">{row.suhu.toFixed(2)}</TableCell>
+                  <TableCell align="center">{row.ph.toFixed(2)}</TableCell>
+                  <TableCell align="center">{row.tinggi_air.toFixed(2)}</TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
                 <TableCell colSpan={4} align="center">
-                  Tidak ada data tersedia
+                  {translate("no_data")}
                 </TableCell>
               </TableRow>
             )}

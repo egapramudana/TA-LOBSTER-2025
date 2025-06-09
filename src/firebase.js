@@ -1,6 +1,7 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -19,5 +20,9 @@ const app = initializeApp(firebaseConfig);
 // Initialize Realtime Database and get a reference to the service
 const database = getDatabase(app);
 
-// Export the database object so it can be used in other components
-export { database };
+// Initialize Firebase Authentication
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+// Export the database and authentication objects so they can be used in other components
+export { database, auth, provider };

@@ -3,267 +3,349 @@ import {
   Box,
   Typography,
   Switch,
-  useTheme,
-  useMediaQuery,
 } from "@mui/material";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { tokens } from "../../theme";
 import Header from "../../components/Header";
-import StatBox from "../../components/StatBox";
-import GrafikSuhu from "../../components/grafiksuhu";
+import CanvasTemperatureChart from "../../components/grafiksuhu";
 import { database } from "../../firebase";
 import { ref, onValue, update } from "firebase/database";
+import { useLanguage } from "../../contexts/LanguageContext";
+import { useTheme, useMediaQuery } from "@mui/material";
+
+// Helper function untuk status suhu
+const getStatus = (value, translate) => {
+  if (value < 20) return translate("status_low");
+  else if (value > 30) return translate("status_high");
+  else return translate("status_normal");
+};
+
+const getIconAndLabel = (status, translate) => {
+  switch (status) {
+    case translate("status_low"):
+      return { icon: <ArrowDownwardIcon sx={{ color: "#5e9cf5" }} />, label: translate("status_low") };
+    case translate("status_high"):
+      return { icon: <ArrowUpwardIcon sx={{ color: "#e57373" }} />, label: translate("status_high") };
+    default:
+      return { icon: <HorizontalRuleIcon sx={{ color: "#70d8bd" }} />, label: translate("status_normal") };
+  }
+};
 
 const KontrolSuhu = () => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
-  const isXsScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { translate } = useLanguage();
 
-  // State untuk menyimpan data sensor
   const [sensorData, setSensorData] = useState([]);
-
-  // State untuk kontrol Water Heater dan Peltier Cooler
   const [waterHeaterOn, setWaterHeaterOn] = useState(false);
   const [peltierCoolerOn, setPeltierCoolerOn] = useState(false);
+  const [isAutomaticMode, setIsAutomaticMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Membaca data sensor dan kontrol dari Firebase
   useEffect(() => {
     const sensorRef = ref(database, "sensor");
     const controlRef = ref(database, "control");
+    
+    setIsLoading(true);
 
-    // Listener untuk data sensor
-    const sensorUnsubscribe = onValue(sensorRef, (snapshot) => {
+    // Subscribe to sensor data
+    const unsubscribeSensor = onValue(sensorRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        // Simpan data sensor ke state
-        setSensorData((prevData) => [
-          ...prevData,
-          {
-            time: new Date().toLocaleTimeString(),
-            temperature: data.suhu || 0,
-          },
-        ]);
+        const now = new Date().toLocaleString(); // Gunakan waktu saat ini
+
+        setSensorData((prev) => {
+          // Hindari duplikat waktu
+          if (prev.length > 0 && prev[prev.length - 1].time === now) return prev;
+          const newData = [
+            ...prev,
+            {
+              time: now,
+              temperature: data.suhu || 0,
+            },
+          ];
+          return isMobile ? newData.slice(-15) : newData.slice(-50);
+        });
       }
+      setIsLoading(false);
     });
 
-    // Listener untuk kontrol water heater dan peltier cooler
-    const controlUnsubscribe = onValue(controlRef, (snapshot) => {
+    // Subscribe to control data
+    const unsubscribeControl = onValue(controlRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         setWaterHeaterOn(!!data.heater);
         setPeltierCoolerOn(!!data.pendingin_peltier);
+        setIsAutomaticMode(!!data.mode);
       }
     });
 
-    // Cleanup listener saat komponen unmount
     return () => {
-      sensorUnsubscribe();
-      controlUnsubscribe();
+      unsubscribeSensor();
+      unsubscribeControl();
     };
-  }, []);
+  }, [isMobile]);
 
-  // Ambil data terbaru
-  const latestData = sensorData[sensorData.length - 1] || {
-    temperature: 0,
-  };
+  const latestData = sensorData[sensorData.length - 1] || { temperature: 0, time: "-" };
 
-  // Filter data berdasarkan timeframe (5 data terakhir)
-  const filteredData = sensorData.slice(-5);
+  const formattedChartData = sensorData.map((entry) => ({
+    x: entry.time,
+    y: Math.round(entry.temperature * 10) / 10
+  }));
 
-  // Format data untuk grafik
-  const temperatureData = [
-    {
-      id: "Temperature",
-      color: "hsl(0, 70%, 50%)",
-      data: filteredData.map((entry) => ({
-        x: entry.time,
-        y: Math.round(entry.temperature),
-      })),
-    },
-  ];
-
-  // Fungsi untuk memperbarui status water heater di Firebase
   const handleWaterHeaterChange = (event) => {
     const newStatus = event.target.checked;
     setWaterHeaterOn(newStatus);
-    const controlRef = ref(database, "control");
-    update(controlRef, { heater: newStatus });
+    update(ref(database, "control"), { heater: newStatus });
   };
 
-  // Fungsi untuk memperbarui status peltier cooler di Firebase
   const handlePeltierCoolerChange = (event) => {
     const newStatus = event.target.checked;
     setPeltierCoolerOn(newStatus);
-    const controlRef = ref(database, "control");
-    update(controlRef, { pendingin_peltier: newStatus });
+    update(ref(database, "control"), { pendingin_peltier: newStatus });
   };
 
+  const handleModeChange = (event) => {
+    const newMode = event.target.checked;
+    setIsAutomaticMode(newMode);
+    update(ref(database, "control"), { mode: newMode });
+  };
+
+  const status = getStatus(latestData.temperature, translate);
+  const { icon, label } = getIconAndLabel(status, translate);
+
   return (
-    <Box m={isXsScreen ? "10px" : "20px"}>
-      {/* HEADER */}
-      <Header title="Kontrol Suhu" subtitle="Kontrol Alat Pengatur Suhu" />
+    <>
+      <Box sx={{ margin: "30px 0px 0px 40px" }}>
+        <Header 
+          title={translate("control_temperature_title")} 
+          subtitle={translate("control_temperature_subtitle")} 
+        />
+      </Box>
 
-      {/* GRID & CHARTS */}
-      <Box
-        display="flex"
-        flexDirection="column"
-        gap="20px"
-        sx={{ padding: isXsScreen ? "5px" : "10px" }}
-      >
-        {/* ROW 1 - STATBOX */}
+      <Box sx={{ margin: "0 20px 0px 20px" }}>
         <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          width="100%"
-        >
-          <Box
-            backgroundColor={colors.primary[400]}
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            justifyContent="center"
-            p={isXsScreen ? "30px 20px" : "50px"}
-            borderRadius="8px"
-            width={isXsScreen ? "100%" : "auto"}
-            minWidth={isXsScreen ? "unset" : "420px"}
-            minHeight={isXsScreen ? "180px" : "200px"}
-          >
-            <StatBox
-              justifyContent="center"
-              alignItems="center"
-              title={`${latestData.temperature}°C`}
-              subtitle="Temperature"
-              progress="0.75"
-              increase="+2°C"
-              icon={
-                <ThermostatIcon
-                  sx={{ color: colors.greenAccent[600], fontSize: isXsScreen ? "22px" : "26px" }}
-                />
-              }
-            />
-          </Box>
-        </Box>
-
-        {/* ROW 2 - SWITCHES */}
-        <Box
-          display="flex"
-          flexDirection={isXsScreen ? "column" : "row"}
-          alignItems="center"
-          justifyContent="center"
+          display="grid"
+          gridTemplateColumns={{
+            xs: "1fr",
+            sm: "repeat(2, 1fr)",
+            md: "repeat(12, 1fr)",
+          }}
+          gridAutoRows="auto"
           gap="20px"
-          width="100%"
+          sx={{ padding: "10px" }}
         >
-          {/* WATER HEATER */}
+          {/* Kartu Status Suhu */}
           <Box
+            gridColumn={{ xs: "span 1", sm: "span 2", md: "span 4" }}
             backgroundColor={colors.primary[400]}
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            justifyContent="center"
-            p={isXsScreen ? "15px" : "20px"}
-            borderRadius="8px"
-            width={isXsScreen ? "100%" : "auto"}
-            minWidth={isXsScreen ? "unset" : "200px"}
+            sx={{
+              padding: "20px",
+              borderRadius: "12px",
+              overflow: "hidden",
+              transition: "transform 0.3s ease, box-shadow 0.3s ease",
+              "&:hover": {
+                transform: "scale(1.03)",
+                boxShadow: `0 4px 20px rgba(0, 0, 0, 0.25)`,
+              },
+            }}
           >
-            <Typography 
-              variant={isXsScreen ? "subtitle1" : "h6"} 
-              color={colors.grey[100]} 
-              mb="10px"
-            >
-              Water Heater
-            </Typography>
-            <Box display="flex" alignItems="center">
-              <Typography variant="body2" color={colors.grey[100]} mr="10px">
-                Off
-              </Typography>
-              <Switch
-                checked={waterHeaterOn}
-                onChange={handleWaterHeaterChange}
-                color="success"
-                sx={{
-                  "& .MuiSwitch-thumb": {
-                    backgroundColor: waterHeaterOn ? colors.greenAccent[600] : colors.grey[500],
-                  },
-                  "& .MuiSwitch-track": {
-                    backgroundColor: waterHeaterOn ? colors.greenAccent[600] : colors.grey[500],
-                  },
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h3" fontWeight="bold" color={colors.grey[100]}>
+                  {isLoading ? "..." : `${latestData.temperature}°C`}
+                </Typography>
+                <Typography variant="h5" color={colors.greenAccent[500]}>
+                  {translate("control_temperature_title")}
+                </Typography>
+                <Box display="flex" alignItems="center" mt={1}>
+                  {icon}
+                  <Typography
+                    variant="h6"
+                    color={colors.grey[100]}
+                    sx={{ marginLeft: "8px" }}
+                  >
+                    {label}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color={colors.grey[400]} mt={1}>
+                  {translate("last_updated")}: {latestData.time}
+                </Typography>
+              </Box>
+              <Box 
+                sx={{ 
+                  backgroundColor: colors.primary[500], 
+                  borderRadius: "50%", 
+                  width: "60px", 
+                  height: "60px", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center"
                 }}
-              />
-              <Typography variant="body2" color={colors.grey[100]} ml="10px">
-                On
+              >
+                <ThermostatIcon
+                  sx={{
+                    color: status === translate("status_high") 
+                      ? colors.redAccent[500] 
+                      : status === translate("status_low") 
+                        ? colors.blueAccent[500] 
+                        : colors.greenAccent[500],
+                    fontSize: "32px",
+                  }}
+                />
+              </Box>
+            </Box>
+            
+            {/* Controls */}
+            <Box mt={3}>
+              <Typography 
+                variant="h6" 
+                color={colors.grey[100]} 
+                fontWeight="bold" 
+                mb={2}
+              >
+                {translate("system_controls")}
               </Typography>
+              
+              {/* Auto Mode Toggle */}
+              <Box 
+                display="flex" 
+                justifyContent="space-between" 
+                alignItems="center" 
+                mb={2}
+                p={1.5}
+                borderRadius="6px"
+                bgcolor={colors.primary[500]}
+              >
+                <Typography variant="body1" color={colors.grey[100]}>
+                  {translate("automatic_mode")}
+                </Typography>
+                <Switch
+                  checked={isAutomaticMode}
+                  onChange={handleModeChange}
+                  color="success"
+                  sx={{
+                    "& .MuiSwitch-thumb": {
+                      backgroundColor: isAutomaticMode
+                        ? colors.greenAccent[500]
+                        : colors.grey[500],
+                    },
+                    "& .MuiSwitch-track": {
+                      backgroundColor: isAutomaticMode
+                        ? colors.greenAccent[500]
+                        : colors.grey[500],
+                    },
+                  }}
+                />
+              </Box>
+              
+              {/* Manual Controls */}
+              {!isAutomaticMode && (
+                <Box>
+                  <Box 
+                    display="flex" 
+                    justifyContent="space-between" 
+                    alignItems="center" 
+                    mb={1.5}
+                    p={1.5}
+                    borderRadius="6px"
+                    bgcolor={colors.primary[500]}
+                  >
+                    <Typography variant="body1" color={colors.grey[100]}>
+                      {translate("water_heater")}
+                    </Typography>
+                    <Switch
+                      checked={waterHeaterOn}
+                      onChange={handleWaterHeaterChange}
+                      color="success"
+                      sx={{
+                        "& .MuiSwitch-thumb": {
+                          backgroundColor: waterHeaterOn
+                            ? colors.greenAccent[500]
+                            : colors.grey[500],
+                        },
+                        "& .MuiSwitch-track": {
+                          backgroundColor: waterHeaterOn
+                            ? colors.greenAccent[500]
+                            : colors.grey[500],
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  <Box 
+                    display="flex" 
+                    justifyContent="space-between" 
+                    alignItems="center"
+                    p={1.5}
+                    borderRadius="6px"
+                    bgcolor={colors.primary[500]}
+                  >
+                    <Typography variant="body1" color={colors.grey[100]}>
+                      {translate("peltier_cooler")}
+                    </Typography>
+                    <Switch
+                      checked={peltierCoolerOn}
+                      onChange={handlePeltierCoolerChange}
+                      color="success"
+                      sx={{
+                        "& .MuiSwitch-thumb": {
+                          backgroundColor: peltierCoolerOn
+                            ? colors.greenAccent[500]
+                            : colors.grey[500],
+                        },
+                        "& .MuiSwitch-track": {
+                          backgroundColor: peltierCoolerOn
+                            ? colors.greenAccent[500]
+                            : colors.grey[500],
+                        },
+                      }}
+                    />
+                  </Box>
+                </Box>
+              )}
             </Box>
           </Box>
 
-          {/* PELTIER COOLER */}
+          {/* Grafik */}
           <Box
+            gridColumn={{ xs: "span 1", sm: "span 2", md: "span 8" }}
             backgroundColor={colors.primary[400]}
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            justifyContent="center"
-            p={isXsScreen ? "15px" : "20px"}
-            borderRadius="8px"
-            width={isXsScreen ? "100%" : "auto"}
-            minWidth={isXsScreen ? "unset" : "200px"}
+            sx={{
+              padding: "20px",
+              borderRadius: "12px",
+              height: isMobile ? "300px" : "400px",
+              overflow: "hidden",
+            }}
           >
-            <Typography 
-              variant={isXsScreen ? "subtitle1" : "h6"} 
-              color={colors.grey[100]} 
-              mb="10px"
-            >
-              Pendingin Peltier
+            <Typography variant="h5" color={colors.grey[100]} mb="15px">
+              {translate("temperature_history")}
             </Typography>
-            <Box display="flex" alignItems="center">
-              <Typography variant="body2" color={colors.grey[100]} mr="10px">
-                Off
-              </Typography>
-              <Switch
-                checked={peltierCoolerOn}
-                onChange={handlePeltierCoolerChange}
-                color="success"
-                sx={{
-                  "& .MuiSwitch-thumb": {
-                    backgroundColor: peltierCoolerOn ? colors.greenAccent[600] : colors.grey[500],
-                  },
-                  "& .MuiSwitch-track": {
-                    backgroundColor: peltierCoolerOn ? colors.greenAccent[600] : colors.grey[500],
-                  },
-                }}
-              />
-              <Typography variant="body2" color={colors.grey[100]} ml="10px">
-                On
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-
-        {/* ROW 3 - TEMPERATURE CHART */}
-        <Box
-          backgroundColor={colors.primary[400]}
-          p={isXsScreen ? "15px" : "20px"}
-          borderRadius="8px"
-          width="100%"
-        >
-          <Typography 
-            variant={isXsScreen ? "subtitle1" : "h6"} 
-            color={colors.grey[100]} 
-            mb="10px"
-          >
-            Temperature Over Time (°C)
-          </Typography>
-          <Box 
-            height={isXsScreen ? "200px" : "250px"} 
-            p={isXsScreen ? "5px" : "10px"} 
-            borderRadius="8px" 
-            backgroundColor={colors.primary[500]}
-          >
-            <GrafikSuhu data={temperatureData} />
+            {isLoading ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="90%">
+                <Typography variant="body1" color={colors.grey[300]}>
+                  {translate("loading_data")}...
+                </Typography>
+              </Box>
+            ) : sensorData.length === 0 ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="90%">
+                <Typography variant="body1" color={colors.grey[300]}>
+                  {translate("no_data_available")}
+                </Typography>
+              </Box>
+            ) : (
+              <Box height="90%">
+                <CanvasTemperatureChart data={formattedChartData} />
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>
-    </Box>
+    </>
   );
 };
 

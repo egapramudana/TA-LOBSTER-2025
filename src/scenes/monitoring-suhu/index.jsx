@@ -1,4 +1,3 @@
-// src/scenes/monitorsuhu/index.jsx
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -12,24 +11,25 @@ import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { tokens } from "../../theme";
 import Header from "../../components/Header";
-import GrafikSuhu from "../../components/grafiksuhu";
+import CanvasTemperatureChart from "../../components/grafiksuhu";
 import { database } from "../../firebase";
-import { ref, onValue, get } from "firebase/database";
+import { ref, onValue } from "firebase/database";
+import { useLanguage } from "../../contexts/LanguageContext";
 
-const getStatus = (value, type) => {
+const getStatus = (value, type, translate) => {
   if (type === "temperature") {
-    return value < 20 ? "Rendah" : value > 30 ? "Tinggi" : "Normal";
+    return value < 20 ? translate("status_low") : value > 30 ? translate("status_high") : translate("status_normal");
   }
 };
 
-const getIconAndLabel = (status) => {
+const getIconAndLabel = (status, translate) => {
   switch (status) {
-    case "Rendah":
-      return { icon: <ArrowDownwardIcon />, label: "Rendah" };
-    case "Tinggi":
-      return { icon: <ArrowUpwardIcon />, label: "Tinggi" };
+    case translate("status_low"):
+      return { icon: <ArrowDownwardIcon sx={{ color: "#5e9cf5" }} />, label: translate("status_low") };
+    case translate("status_high"):
+      return { icon: <ArrowUpwardIcon sx={{ color: "#e57373" }} />, label: translate("status_high") };
     default:
-      return { icon: <HorizontalRuleIcon />, label: "Normal" };
+      return { icon: <HorizontalRuleIcon sx={{ color: "#70d8bd" }} />, label: translate("status_normal") };
   }
 };
 
@@ -38,62 +38,59 @@ const MonitorSuhu = () => {
   const colors = tokens(theme.palette.mode);
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [sensorData, setSensorData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const sensorRef = ref(database, "sensor");
-    get(sensorRef).then((snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const initialData = Object.keys(data).map((key) => ({
-          time: new Date(parseInt(key)).toLocaleString(),
-          temperature: data[key].suhu || 0,
-        }));
-        setSensorData(initialData.slice(-20));
-      }
-    });
+  const { translate } = useLanguage();
 
-    const unsubscribe = onValue(sensorRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setSensorData((prev) => {
-          const newData = [
-            ...prev,
-            {
-              time: new Date().toLocaleString(),
-              temperature: data.suhu || 0,
-            },
-          ];
-          return newData.slice(-20);
-        });
-      }
-    });
+useEffect(() => {
+  const sensorRef = ref(database, "sensor");
+  setIsLoading(true);
 
-    return () => unsubscribe();
-  }, []);
+  const unsubscribe = onValue(sensorRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      // Ganti ini:
+      // const timestamp = data.timestamp ? new Date(data.timestamp * 1000) : new Date();
 
-  const latestData = sensorData[sensorData.length - 1] || { temperature: 0 };
-  const filteredData = sensorData.slice(-5);
+      // Jadi selalu ambil waktu client saat data diterima:
+      const timestamp = new Date();
+      const readableTimestamp = timestamp.toLocaleString();
 
-  const temperatureData = [
-    {
-      id: "Temperature",
-      color: "hsl(0, 70%, 50%)",
-      data: filteredData.map((entry) => ({
-        x: entry.time,
-        y: Math.round(entry.temperature),
-      })),
-    },
-  ];
+      setSensorData((prev) => {
+        const newData = [
+          ...prev,
+          {
+            time: readableTimestamp,
+            temperature: data.suhu || 0,
+          },
+        ];
+        return isMobile ? newData.slice(-15) : newData.slice(-50);
+      });
+    }
+    setIsLoading(false);
+  });
 
-  const status = getStatus(latestData.temperature, "temperature");
-  const { icon, label } = getIconAndLabel(status);
+  return () => unsubscribe();
+}, [isMobile]);
+
+
+  const latestData = sensorData[sensorData.length - 1] || { temperature: 0, time: "-" };
+  
+  // Format data for chart
+  const formattedChartData = sensorData.map((entry) => ({
+    x: entry.time,
+    y: Math.round(entry.temperature * 10) / 10
+  }));
+
+  const status = getStatus(latestData.temperature, "temperature", translate);
+  const { icon, label } = getIconAndLabel(status, translate);
 
   return (
     <>
       <Box sx={{ margin: "30px 0px 0px 40px" }}>
         <Header
-          title="Temperature"
-          subtitle="Monitoring Temperature Levels"
+          title={translate("monitor_temperature_title")}
+          subtitle={translate("monitor_temperature_subtitle")}
         />
       </Box>
 
@@ -110,56 +107,145 @@ const MonitorSuhu = () => {
           sx={{ padding: "10px" }}
         >
           <Box
+            className="card"
             gridColumn={{ xs: "span 1", sm: "span 2", md: "span 4" }}
             backgroundColor={colors.primary[400]}
             sx={{
-              padding: "15px",
-              borderRadius: "8px",
+              padding: "20px",
+              borderRadius: "12px",
               overflow: "hidden",
               transition: "transform 0.3s ease, box-shadow 0.3s ease",
               "&:hover": {
-                transform: "scale(1.05)",
-                boxShadow: `0 4px 8px rgba(0, 0, 0, 0.2)`,
+                transform: "scale(1.03)",
+                boxShadow: `0 4px 20px rgba(0, 0, 0, 0.25)`,
               },
             }}
           >
             <Box display="flex" justifyContent="space-between" alignItems="center">
               <Box>
                 <Typography variant="h3" fontWeight="bold" color={colors.grey[100]}>
-                  {`${latestData.temperature}°C`}
+                  {isLoading ? "..." : `${latestData.temperature}°C`}
                 </Typography>
                 <Typography variant="h5" color={colors.greenAccent[500]}>
-                  Temperature
+                  {translate("monitor_temperature_label")}
                 </Typography>
-                <Box display="flex" alignItems="center">
+                <Box display="flex" alignItems="center" mt={1}>
                   {icon}
-                  <Typography variant="h6" color={colors.grey[100]} sx={{ marginLeft: "8px" }}>
+                  <Typography
+                    variant="h6"
+                    color={colors.grey[100]}
+                    sx={{ marginLeft: "8px" }}
+                  >
                     {label}
                   </Typography>
                 </Box>
+                <Typography variant="body2" color={colors.grey[400]} mt={1}>
+                  {translate("last_updated")}: {latestData.time}
+                </Typography>
               </Box>
-              <Box display="flex" alignItems="center">
-                <ThermostatIcon sx={{ color: colors.greenAccent[600], fontSize: "24px" }} />
+              <Box 
+                sx={{ 
+                  backgroundColor: colors.primary[500], 
+                  borderRadius: "50%", 
+                  width: "60px", 
+                  height: "60px", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center"
+                }}
+              >
+                <ThermostatIcon
+                  sx={{
+                    color: status === translate("status_high") 
+                      ? colors.redAccent[500] 
+                      : status === translate("status_low") 
+                        ? colors.blueAccent[500] 
+                        : colors.greenAccent[500],
+                    fontSize: "32px",
+                  }}
+                />
+              </Box>
+            </Box>
+            {/* Temperature Range Legend */}
+            <Box mt={2} sx={{ borderTop: `1px solid ${colors.grey[600]}`, pt: 2 }}>
+              <Typography variant="body2" color={colors.grey[400]} mb={1}>
+                {translate("temperature_ranges")}:
+              </Typography>
+              <Box display="flex" flexWrap="wrap" gap={isMobile ? 1 : 2}>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Box
+                    sx={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "50%",
+                      backgroundColor: "#e57373",
+                    }}
+                  />
+                  <Typography variant="body2" color={colors.grey[100]}>
+                    {translate("status_high")}: {translate("temp_high_range")}
+                  </Typography>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Box
+                    sx={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "50%",
+                      backgroundColor: "#70d8bd",
+                    }}
+                  />
+                  <Typography variant="body2" color={colors.grey[100]}>
+                    {translate("status_normal")}: {translate("temp_normal_range")}
+                  </Typography>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Box
+                    sx={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "50%",
+                      backgroundColor: "#5e9cf5",
+                    }}
+                  />
+                  <Typography variant="body2" color={colors.grey[100]}>
+                    {translate("status_low")}: {translate("temp_low_range")}
+                  </Typography>
+                </Box>
               </Box>
             </Box>
           </Box>
 
           <Box
-            gridColumn={{ xs: "span 1", sm: "span 2", md: "span 12" }}
+            className="card"
+            gridColumn={{ xs: "span 1", sm: "span 2", md: "span 8" }}
             backgroundColor={colors.primary[400]}
             sx={{
-              padding: "15px",
-              borderRadius: "8px",
-              height: isMobile ? "200px" : "400px",
+              padding: "20px",
+              borderRadius: "12px",
+              height: isMobile ? "300px" : "400px",
               overflow: "hidden",
             }}
           >
-            <Typography variant="h6" color={colors.grey[100]} mb="10px">
-              Suhu (°C)
+            <Typography variant="h5" color={colors.grey[100]} mb="15px">
+              {translate("temperature_history")}
             </Typography>
-            <Box height="100%">
-              <GrafikSuhu data={temperatureData} />
-            </Box>
+            {isLoading ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="90%">
+                <Typography variant="body1" color={colors.grey[300]}>
+                  {translate("loading_data")}...
+                </Typography>
+              </Box>
+            ) : sensorData.length === 0 ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="90%">
+                <Typography variant="body1" color={colors.grey[300]}>
+                  {translate("no_data_available")}
+                </Typography>
+              </Box>
+            ) : (
+              <Box height="90%">
+                <CanvasTemperatureChart data={formattedChartData} isMobile={isMobile} />
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>

@@ -1,3 +1,4 @@
+// src/components/Sidebar.jsx
 import { useState, useEffect, useRef } from "react";
 import { ProSidebar, Menu, MenuItem } from "react-pro-sidebar";
 import { Box, IconButton, Typography, useTheme, Switch, useMediaQuery } from "@mui/material";
@@ -22,13 +23,18 @@ import CopyrightIcon from '@mui/icons-material/Copyright';
 import { database } from "../../firebase";
 import { ref, onValue, update } from "firebase/database";
 
-const Item = ({ title, to, icon, selected, setSelected, isCollapsed }) => {
+// Import context dan hook
+import { useLanguage } from "../../contexts/LanguageContext";
+
+const Item = ({ titleKey, to, icon, selected, setSelected, isCollapsed }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
-  const titleText = typeof title === 'string' ? title : 'Menu Item';
+  const { translate } = useLanguage(); // Gunakan translate
+  const title = translate(titleKey);   // Terjemahkan titleKey
+
   return (
     <MenuItem
-      active={selected === titleText}
+      active={selected === title}
       style={{
         color: colors.grey[100],
         padding: isCollapsed ? "5px 0" : undefined,
@@ -37,26 +43,20 @@ const Item = ({ title, to, icon, selected, setSelected, isCollapsed }) => {
         alignItems: "center",
         marginBottom: isCollapsed ? "10px" : "5px",
       }}
-      onClick={() => setSelected(titleText)}
+      onClick={() => setSelected(title)}
       icon={icon}
     >
       {!isCollapsed && (
-        <>
-          {typeof title === 'string' ? (
-            <Typography 
-              sx={{
-                whiteSpace: "normal",
-                wordBreak: "break-word",
-                lineHeight: "1.2",
-                fontSize: "0.9rem",
-              }}
-            >
-              {title}
-            </Typography>
-          ) : (
-            title
-          )}
-        </>
+        <Typography 
+          sx={{
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            lineHeight: "1.2",
+            fontSize: "0.9rem",
+          }}
+        >
+          {title}
+        </Typography>
       )}
       <Link to={to} />
     </MenuItem>
@@ -71,6 +71,8 @@ const Sidebar = () => {
   const [selected, setSelected] = useState("Beranda");
   const [mode, setMode] = useState(false);
   const sidebarRef = useRef(null);
+
+  const { translate } = useLanguage(); // Gunakan terjemahan
 
   useEffect(() => {
     const controlRef = ref(database, "control/mode");
@@ -118,33 +120,34 @@ const Sidebar = () => {
     );
   };
 
-  const SectionHeading = ({ title }) => (
-    <Typography
-      variant="h6"
-      color={colors.grey[300]}
-      sx={{
-        m: "15px 0 8px 20px",
-        fontSize: "0.85rem",
-        fontWeight: "500",
-        textTransform: "uppercase",
-        letterSpacing: "0.5px",
-      }}
-    >
-      {title}
-    </Typography>
-  );
+  const SectionHeading = ({ translationKey }) => {
+    const headingText = translate(translationKey);
+    return (
+      <Typography
+        variant="h6"
+        color={colors.grey[300]}
+        sx={{
+          m: "15px 0 8px 20px",
+          fontSize: "0.85rem",
+          fontWeight: "500",
+          textTransform: "uppercase",
+          letterSpacing: "0.5px",
+        }}
+      >
+        {headingText}
+      </Typography>
+    );
+  };
 
-  // Improved Swipe Logic
+  // Swipe Logic
   useEffect(() => {
     let startX = 0;
     let isSwiping = false;
-    const SWIPE_THRESHOLD = 50; // Minimum swipe distance to trigger sidebar
-    const EDGE_THRESHOLD = 30; // Pixels from edge to detect swipe
+    const SWIPE_THRESHOLD = 50;
+    const EDGE_THRESHOLD = 30;
 
     const handleTouchStart = (e) => {
       startX = e.touches[0].clientX;
-      
-      // Only initiate swipe detection if touch starts near the edge of the screen
       if (isCollapsed && startX < EDGE_THRESHOLD) {
         isSwiping = true;
       } else if (!isCollapsed && startX < (isCollapsed ? 80 : 300) + EDGE_THRESHOLD) {
@@ -154,18 +157,13 @@ const Sidebar = () => {
 
     const handleTouchMove = (e) => {
       if (!isSwiping) return;
-
       const currentX = e.touches[0].clientX;
       const deltaX = currentX - startX;
-
-      // Open sidebar if swiping right from left edge when collapsed
       if (deltaX > SWIPE_THRESHOLD && isCollapsed) {
         setIsCollapsed(false);
         localStorage.setItem('sidebarCollapsed', 'false');
         isSwiping = false;
       }
-
-      // Close sidebar if swiping left when open
       if (deltaX < -SWIPE_THRESHOLD && !isCollapsed) {
         setIsCollapsed(true);
         localStorage.setItem('sidebarCollapsed', 'true');
@@ -180,7 +178,6 @@ const Sidebar = () => {
     document.addEventListener("touchstart", handleTouchStart);
     document.addEventListener("touchmove", handleTouchMove);
     document.addEventListener("touchend", handleTouchEnd);
-
     return () => {
       document.removeEventListener("touchstart", handleTouchStart);
       document.removeEventListener("touchmove", handleTouchMove);
@@ -312,7 +309,7 @@ const Sidebar = () => {
 
           <Box paddingLeft={isCollapsed ? undefined : "5%"}>  
             <Item
-              title="Beranda"
+              titleKey="menu_home"
               to="/"
               icon={<HomeOutlinedIcon />}
               selected={selected}
@@ -320,10 +317,10 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
 
-            {!isCollapsed && <SectionHeading title="Monitor" />}
+            {!isCollapsed && <SectionHeading translationKey="monitor_section" />}
             {isCollapsed && <SectionDivider />}
             <Item
-              title="Suhu Air (°C)"
+              titleKey="temperature"
               to="/monitoring-suhu"
               icon={<AcUnitIcon />}
               selected={selected}
@@ -331,7 +328,7 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
             <Item
-              title="Keasaman Air (pH)"
+              titleKey="ph_level"
               to="/monitoring-ph"
               icon={<ScienceIcon />}
               selected={selected}
@@ -339,7 +336,7 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
             <Item
-              title="Ketinggian Air (cm)"
+              titleKey="water_level"
               to="/water-level"
               icon={<WavesIcon />}
               selected={selected}
@@ -347,10 +344,8 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
 
-            {!isCollapsed && <SectionHeading title="Control" />}
-            
+            {!isCollapsed && <SectionHeading translationKey="control_section" />}
             {isCollapsed && <SectionDivider />}
-            
             {!isCollapsed && (
               <Box
                 display="flex"
@@ -359,7 +354,7 @@ const Sidebar = () => {
                 sx={{ mx: "15px", my: "8px" }}
               >
                 <Typography variant="body2" color={colors.grey[100]}>
-                  Mode Otomatis
+                  {translate("automatic_mode")}
                 </Typography>
                 <Switch
                   checked={mode}
@@ -378,7 +373,7 @@ const Sidebar = () => {
               </Box>
             )}
             <Item
-              title="Kontrol Suhu Air (°C)"
+              titleKey="control_temperature"
               to="/control-suhu"
               icon={<DeviceThermostatIcon />}
               selected={selected}
@@ -386,18 +381,18 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
             <Item
-              title="Kontrol Ketinggian Air (cm)"
+              titleKey="control_water_level"
               to="/control-water-level"
               icon={<OpacityIcon />}
               selected={selected}
               setSelected={setSelected}
               isCollapsed={isCollapsed}
             />
-            
-            {!isCollapsed && <SectionHeading title="Info" />}
+
+            {!isCollapsed && <SectionHeading translationKey="info_section" />}
             {isCollapsed && <SectionDivider />}
             <Item
-              title="Notifikasi"
+              titleKey="notifications"
               to="/notifications"
               icon={<NotificationsIcon />}
               selected={selected}
@@ -405,15 +400,7 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
             <Item
-              title="Kalender & Riwayat"
-              to="/calendar"
-              icon={<CalendarTodayOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-              isCollapsed={isCollapsed}
-            />
-            <Item
-              title="Status Alat"
+              titleKey="device_status"
               to="/status-alat"
               icon={<BarChartOutlinedIcon />}
               selected={selected}
@@ -421,7 +408,7 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
             <Item
-              title="Riwayat History"
+              titleKey="history"
               to="/history"
               icon={<MapOutlinedIcon />}
               selected={selected}
@@ -429,6 +416,7 @@ const Sidebar = () => {
               isCollapsed={isCollapsed}
             />
           </Box>
+
           <Box
             sx={{
               color: colors.greenAccent[500],
@@ -450,7 +438,7 @@ const Sidebar = () => {
             )}
             {!isCollapsed && (
               <Typography variant="caption">
-                Copyright 2025 Kelompok S2TK14
+                {translate("copyright")}
               </Typography>
             )}
           </Box>
