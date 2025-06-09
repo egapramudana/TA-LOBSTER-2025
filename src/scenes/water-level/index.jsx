@@ -11,7 +11,7 @@ import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { tokens } from "../../theme";
 import Header from "../../components/Header";
-import GrafikWaterLevel from "../../components/GrafikWaterLevel";
+import CanvasWaterLevelChart from "../../components/GrafikWaterLevel";
 import { database } from "../../firebase";
 import { ref, onValue } from "firebase/database";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -41,16 +41,22 @@ const MonitorWater = () => {
   const colors = tokens(theme.palette.mode);
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [sensorData, setSensorData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { translate } = useLanguage();
 
   // Ambil data tinggi air dari Firebase secara real-time
   useEffect(() => {
     const sensorRef = ref(database, "sensor");
 
+    setIsLoading(true);
+
     const unsubscribe = onValue(sensorRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const readableTimestamp = new Date().toLocaleString(); // Gunakan waktu saat ini atau sesuaikan dengan timestamp dari data
+        // Gunakan waktu saat data diterima
+        const currentTime = new Date();
+        const readableTimestamp = currentTime.toLocaleString();
+        
         setSensorData((prev) => {
           const newData = [
             ...prev,
@@ -59,22 +65,20 @@ const MonitorWater = () => {
               waterLevel: data.tinggi_air || 0,
             },
           ];
-          return newData.slice(-20); // Simpan hanya 20 entri terakhir
+          return isMobile ? newData.slice(-15) : newData.slice(-50);
         });
       }
+      setIsLoading(false);
     });
 
     return () => unsubscribe(); // Cleanup listener saat komponen unmount
-  }, []);
+  }, [isMobile]);
 
   const latestData = sensorData[sensorData.length - 1] || { waterLevel: 0, time: "-" };
-  const filteredData = sensorData.slice(-5);
 
-  const waterLevelData = [
+  const chartData = [
     {
-      id: "Water Level",
-      color: "hsl(200, 70%, 50%)",
-      data: filteredData.map((entry) => ({
+      data: sensorData.map((entry) => ({
         x: entry.time,
         y: Math.round(entry.waterLevel * 10) / 10,
       })),
@@ -125,7 +129,7 @@ const MonitorWater = () => {
             <Box display="flex" justifyContent="space-between">
               <Box>
                 <Typography variant="h3" fontWeight="bold" color={colors.grey[100]}>
-                  {`${latestData.waterLevel.toFixed(1)} cm`}
+                  {isLoading ? "..." : `${latestData.waterLevel.toFixed(1)} cm`}
                 </Typography>
                 <Typography variant="h5" color={colors.greenAccent[500]}>
                   {translate("monitor_water_label")}
@@ -230,16 +234,23 @@ const MonitorWater = () => {
             <Typography variant="h5" color={colors.grey[100]} mb="20px">
               {translate("water_over_time")}
             </Typography>
-            <Box
-              height={isMobile ? "240px" : "320px"}
-              sx={{
-                paddingRight: "10px",
-                paddingLeft: "10px",
-                paddingBottom: "20px",
-              }}
-            >
-              <GrafikWaterLevel data={waterLevelData} />
-            </Box>
+            {isLoading ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="80%">
+                <Typography variant="body1" color={colors.grey[300]}>
+                  {translate("loading_data")}...
+                </Typography>
+              </Box>
+            ) : sensorData.length === 0 ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="80%">
+                <Typography variant="body1" color={colors.grey[300]}>
+                  {translate("no_data_available")}
+                </Typography>
+              </Box>
+            ) : (
+              <Box height={isMobile ? "240px" : "320px"}>
+                <CanvasWaterLevelChart data={chartData} />
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>
